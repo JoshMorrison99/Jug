@@ -1,22 +1,34 @@
 import sys
+import argparse
 import requests
 import warnings
 import concurrent.futures
-from Wappalyzer import Wappalyzer, WebPage
 
 base = {}
 
 def main():
+    parser = argparse.ArgumentParser(description="Juggernaut is a directory bruteforcing tool that is nice to the servers and fully automated",
+    usage="cat alive.txt | python3 jug.py [options]")
+
+    parser.add_argument('-t', metavar='-threads', help="Specify the number of threads (default=25)")
+    parser.add_argument('-w', metavar='-wordlist', help="Specify a wordlist.", required=True)
+
+    args = parser.parse_args()
+
+    num_threads = 25
+    if(args.t != None):
+        num_threads = args.t
+
     warnings.filterwarnings("ignore")
 
     urls = sys.stdin.readlines()
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
         for url in urls:
             executor.submit(get_base, url)
 
-    with open('sample.txt') as wordlist:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+    with open(args.w) as wordlist:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
             for word in wordlist: 
                 for url in urls:
                     executor.submit(run, url, word)
@@ -24,20 +36,21 @@ def main():
 def get_base(_url):
     url = _url.strip()
     try:
-        response = requests.get(f"{url}/", timeout=2, allow_redirects=False)
         base[url] = {}
+
+        # Get Base Response
+        response = requests.get(f"{url}/", timeout=2, allow_redirects=False)
         line_count = len(response.text.split('\n'))
         base[url]["status_code"] = response.status_code
         base[url]["line_count"] = line_count
         base[url]["word_count"] = len(response.text.split())
-        base[url]["technology"] = {}
 
-        # Create a Wappalyzer object and analyze the webpage
-        wappalyzer = Wappalyzer.latest()
-        webpage = WebPage.new_from_response(response)
-        detected = wappalyzer.analyze(webpage)
-
-        base[url]["technology"] = detected
+        # Get Random Response
+        response = requests.get(f"{url}/shelled", timeout=2, allow_redirects=False)
+        line_count = len(response.text.split('\n'))
+        base[url]["random_status_code"] = response.status_code
+        base[url]["random_line_count"] = line_count
+        base[url]["random_word_count"] = len(response.text.split())
     except:
         pass
 
@@ -51,7 +64,7 @@ def run(_url, _word):
         word_count = len(response.text.split())
         #print(f"{(url + '/' + word):75}     [Status: {response.status_code}, Size: {len(response.content)}, Words: {word_count}, Lines: {line_count}]")
 
-        if(response.status_code == 200 and base[url]["word_count"] != word_count):
+        if(response.status_code == 200 and base[url]["word_count"] != word_count and base[url]["random_word_count"] != word_count):
             print(f"{url}/{word}")
     except requests.exceptions.RequestException as e:
         pass
